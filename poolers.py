@@ -218,16 +218,16 @@ class TDGSPooling2d(nn.Module):
         self.stride = stride
         self.in_channels = in_channels
         self.device = device
-        rumor = (torch.rand((in_channels, H_out, W_out), device = self.device) - torch.ones((self.in_channels, H_out, W_out), device=self.device)*0.5) # some rumor from U(-0.5, 0.5)
-        self.temperature = nn.Parameter(torch.ones((self.in_channels, H_out, W_out), device= self.device)*initial_value + rumor, requires_grad = True)
-        self.epsilon = nn.Parameter(torch.ones_like(self.temperature, device=self.device)*10e-2, requires_grad=False) # This prevent the temperature to actually going to 0, preventing numerical errors while performing like a softmax in the bottom case
+        #rumor = (torch.rand((in_channels, H_out, W_out), device = self.device) - torch.ones((self.in_channels, H_out, W_out), device=self.device)*0.5) # some rumor from U(-0.5, 0.5)
+        self.temperature = nn.Parameter(torch.ones((self.in_channels, H_out, W_out), device= self.device)*initial_value, requires_grad = True)
+        self.epsilon = nn.Parameter(torch.ones_like(self.temperature, device=self.device)*10e-3, requires_grad=False) # This prevent the temperature to actually going to 0, preventing numerical errors while performing like a softmax in the bottom case
     
     def _probabilistic_pool(self, x_unf):
         # x_unf: (B, C, H_out, W_out, k*k)
         # Compute probabilities over the pooling window
         temps = F.relu(self.temperature) + self.epsilon # imposed to be >= epsilon
         # Sample from the distribution and obtain the corrispective one hot encoding 
-        samples = F.gumbel_softmax(logits = x_unf/temps[None, :, :, :, None], tau = 1,  hard=True, dim = -1)
+        samples = F.gumbel_softmax(logits = normalize(x_unf)/temps[None, :, :, :, None], tau = 1,  hard=True, dim = -1)
         # Since this is a one hot encoding we can do this trick to obtain the actual pooling
         pooled = (x_unf * samples).sum(dim=-1)
         return pooled
@@ -235,7 +235,7 @@ class TDGSPooling2d(nn.Module):
     def _deterministic_pool(self, x_unf):
         # x_unf: (B, C, H_out, W_out, k*k)
         temps = F.relu(self.temperature) + self.epsilon # imposed to be >= epsilon
-        probs = F.gumbel_softmax(logits = x_unf/temps[None, :, :, :, None], tau = 1, dim = -1)
+        probs = F.softmax(normalize(x_unf)/temps[None, :, :, :, None], dim = -1)
         expected = (probs * x_unf).sum(dim=-1)  # Expectation not just one sample
         return expected
 
@@ -250,7 +250,7 @@ class TDGSPooling2d(nn.Module):
         if self.training:
             return self._probabilistic_pool(x_unf).view(B, C, H_out, W_out) # need to be a little reshaped
         else:
-            return self._probabilistic_pool(x_unf).view(B, C, H_out, W_out) # if wanted to try
+            #return self._probabilistic_pool(x_unf).view(B, C, H_out, W_out) # if wanted to try
             return self._deterministic_pool(x_unf) # already of the right shape 
 
     def get_core(self):
@@ -258,6 +258,33 @@ class TDGSPooling2d(nn.Module):
             Return None since it is not a learnable pooler.
         """
         return self.temperature
+
+def normalize(x):
+    x_normalized = x / (x.norm(p=2, dim=-1, keepdim=True).clamp(min=1e-8))
+    return x_normalized
+
+def standardize(x):
+    # Compute mean and std along the last dimension
+    mean = x.mean(dim=-1, keepdim=True)
+    std = x.std(dim=-1, keepdim=True)
+
+    # Avoid division by zero
+    std = std.clamp(min=1e-8)
+
+    # Standardize
+    x_standardized = (x - mean) / std
+    return x_standardized
+
+def compress(x):
+    # Compute the max along the last dimension
+    max_vals, _ = x.max(dim=-1, keepdim=True)
+
+    # Avoid division by zero
+    max_vals = max_vals.clamp(min=1e-8)
+
+    # Normalize by the max
+    x_normalized = x / max_vals
+    return x_normalized
     
 if __name__ == "__main__":
     """
@@ -267,8 +294,19 @@ if __name__ == "__main__":
     print(t)
     print(torch.gather(t, 2, torch.tensor([[[[1, 1], [1, 0]] for _ in range (c)] for _ in range (b)])))
     """
-    m = torch.tensor([[[[1., 2., 3., 4.], [5., 6., 7., 8.], [9., 10., 11., 12.], [13., 14., 15., 16.]]]])
-    pooler = TDGSPooling2d(2, 2, 1, device="cpu")
+    m = torch.tensor([[[[1., 2., 3., 4.], [5., 6., 7., 8.], [9., 10., 11., 12.], [13., 14., 15., 16.]]]]).to("cuda")
+    pooler = TDGSPooling2d(2, 2, 1, device="cuda", H_out=2, W_out=2, initial_value=10)
     for i in range(10):
         print(pooler.forward(m))
+    """
+    c = compress(m)
+    n = normalize(m)
+    s = standardize(m)
+    cs = compress(standardize(m))
+    print(F.gumbel_softmax(m, tau=1, dim = -1, hard=False))
+    """
+
+
+
+    
 

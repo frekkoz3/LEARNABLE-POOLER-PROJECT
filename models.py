@@ -9,22 +9,27 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from poolers import *
 
-class TDSGSimpleCNN(nn.Module):
+class SimpleCNN(nn.Module):
+    """
+        This is a simple CNN with MaxPool2d.
+        This architecture should work for the MNIST dataset.
+    """
     def __init__(self, num_classes=10, in_channels = 3):
-        """
-            This is not the best implementation for this type of structure since different poolers requires different parameters
-        """
-        super(TDSGSimpleCNN, self).__init__()
+        super(SimpleCNN, self).__init__()
         
-        self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=16, kernel_size=3, padding=1)  # Input: (B, 3, 28, 28)
+        self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=16, kernel_size=3, padding=1)  # Input: (B, 1, 28, 28) for MNIST,  (B, 3, 32, 32) for cifar10
         
-        self.pool1 = TDGSPooling2d(kernel_size=2, stride=2, in_channels = 16, device = "cuda", H_out = 16, W_out = 16)  # Output: (B, 16, 14, 14) for MNIST, (B, 16, 16, 16) for cifar10 
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)  # Output: (B, 16, 14, 14) for MNIST, (B, 16, 16, 16) for cifar10 
 
         self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, padding=1)  # Output: (B, 32, 14, 14) for MNIST, (B, 32, 16, 16) for cifar10
         
-        self.pool2 = TDGSPooling2d(kernel_size=2, stride=2, in_channels = 32, device = "cuda", H_out = 8, W_out = 8)  # Output: (B, 32, 7, 7) for MNIST, (B, 32, 8, 8) for cifar10
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)  # Output: (B, 32, 7, 7) for MNIST, (B, 32, 8, 8) for cifar10
 
-        self.fc1 = nn.Linear(32 * 8 * 8 , 128) # It is 8x8 for SP3, 7x7 for the others
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1) 
+        
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        self.fc1 = nn.Linear(64 * 4 * 4 , 128) # 64x3x3 for MNIST, 64x4x4 for cifar10
         self.fc2 = nn.Linear(128, num_classes)
 
     def forward(self, x):
@@ -36,11 +41,57 @@ class TDSGSimpleCNN(nn.Module):
         x = F.relu(x)
         x = self.pool2(x)
 
+        x = self.conv3(x)
+        x = F.relu(x)
+        x = self.pool3(x)
+
         x = x.view(x.size(0), -1)  # Flatten
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
 
+class TDSGSimpleCNN(nn.Module):
+    def __init__(self, num_classes=10, in_channels = 3):
+        """
+            This is a simple CNN with TDGSPooling2d.
+            This architecture should work for the MNIST dataset.
+        """
+        super(TDSGSimpleCNN, self).__init__()
+        
+        self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=16, kernel_size=3, padding=1)  # Input: (B, 3, 28, 28)
+        
+        self.pool1 = TDGSPooling2d(kernel_size=2, stride=2, in_channels = 16, device = "cuda", H_out = 16, W_out = 16)  # Output: (B, 16, 14, 14) for MNIST, (B, 16, 16, 16) for cifar10 
+
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, padding=1)  # Output: (B, 32, 14, 14) for MNIST, (B, 32, 16, 16) for cifar10
+        
+        self.pool2 = TDGSPooling2d(kernel_size=2, stride=2, in_channels = 32, device = "cuda", H_out = 8, W_out = 8)  # Output: (B, 32, 7, 7) for MNIST, (B, 32, 8, 8) for cifar10
+
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)  # Output: (B, 64, 7, 7) for MNIST, (B, 64, 8, 8) for cifar10
+        
+        self.pool3 = TDGSPooling2d(kernel_size=2, stride=2, in_channels = 64, device = "cuda", H_out = 4, W_out = 4)  # Output: (B, 64, 3, 3) for MNIST, (B, 64, 4, 4) for cifar10
+        
+        self.fc1 = nn.Linear(64 * 4 * 4 , 128) # It is 8x8 for SP3, 7x7 for the others
+        self.fc2 = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = self.pool1(x)
+
+        x = self.conv2(x)
+        x = F.relu(x)
+        x = self.pool2(x)
+
+        x = self.conv3(x)
+        x = F.relu(x)
+        x = self.pool3(x)
+
+        x = x.view(x.size(0), -1)  # Flatten
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+        
 if __name__ == "__main__":
     # Load MNIST dataset
     transform = transforms.ToTensor()
@@ -57,8 +108,9 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    #print(model.pool1.get_core())
-    #print(model.pool2.get_core())
+    print(model.pool1.get_core())
+    print(model.pool2.get_core())
+    print(model.pool3.get_core())
 
     for epoch in range(20):  # number of epochs
         model.train()
@@ -93,7 +145,8 @@ if __name__ == "__main__":
 
     print(f"Test Accuracy: {100 * correct / total:.2f}%")
 
-    #print(model.pool1.get_core())
-    #print(model.pool2.get_core())
+    print(model.pool1.get_core())
+    print(model.pool2.get_core())
+    print(model.pool3.get_core())
 
 

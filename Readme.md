@@ -8,7 +8,7 @@ The project is divided in 3 different parts:
 
 1. Literature review and existing poolers implementation in PyTorch
 2. Implementation of a new pooler in PyTorch
-3. Evaluation of the new pooler on CIFAR10, CIFAR100 and MNIST using a standard CNN
+3. Evaluation of the new pooler on CIFAR10 and MNIST using a standard CNN
 
 The code will be develop in Python files while the notebook is the wrapper for the final product.
 
