@@ -1,0 +1,11 @@
+results obtained in data 8/6/25 at 16.20
+
+architecture etc well described in the project.ipynb
+
+MNIST, test accuracy:
+TDGS with t initial value 1 : 99.24%
+MAX : 98.96%
+
+CIFAR10, test accuracy:
+TDGS with t initial value 1 : 72.89%
+MAX : 70.37%
