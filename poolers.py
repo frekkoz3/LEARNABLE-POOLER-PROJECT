@@ -218,6 +218,7 @@ class TDGSPooling2d(nn.Module):
         self.stride = stride
         self.in_channels = in_channels
         self.device = device
+        self.initial_value = initial_value
         #rumor = (torch.rand((in_channels, H_out, W_out), device = self.device) - torch.ones((self.in_channels, H_out, W_out), device=self.device)*0.5) # some rumor from U(-0.5, 0.5)
         self.temperature = nn.Parameter(torch.ones((self.in_channels, H_out, W_out), device= self.device)*initial_value, requires_grad = True)
         self.epsilon = nn.Parameter(torch.ones_like(self.temperature, device=self.device)*10e-3, requires_grad=False) # This prevent the temperature to actually going to 0, preventing numerical errors while performing like a softmax in the bottom case
@@ -255,7 +256,7 @@ class TDGSPooling2d(nn.Module):
 
     def get_core(self):
         """
-            Return None since it is not a learnable pooler.
+            Return the temperature parameters.
         """
         return self.temperature
 
